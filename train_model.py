@@ -14,6 +14,7 @@ parser.add_argument('-batch_size', type=int, default=24)
 parser.add_argument('-length', type=int, default=16)
 parser.add_argument('-learnable', type=str, default='[0,0,0,0,0]')
 parser.add_argument('-niter', type=int)
+parser.add_argument('-system', type=str, help='')
 
 args = parser.parse_args()
 
@@ -34,7 +35,7 @@ device = torch.device('cuda')
 #
 ##################
 model = flow_2p1d_resnets.resnet50(pretrained=False, mode=args.mode, n_iter=args.niter, learnable=eval(args.learnable), num_classes=400)
-    
+
 model = nn.DataParallel(model).to(device)
 batch_size = args.batch_size
 
@@ -43,7 +44,7 @@ if args.system == 'hmdb':
     from hmdb_dataset import HMDB as DS
     dataseta = DS('data/hmdb/split1_train.txt', '/ssd/hmdb/', model=args.model, mode=args.mode, length=args.length)
     dl = torch.utils.data.DataLoader(dataseta, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
-    
+
     dataset = DS('data/hmdb/split1_test.txt', '/ssd/hmdb/', model=args.model, mode=args.mode, length=args.length, c2i=dataseta.class_to_id)
     vdl = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
     dataloader = {'train':dl, 'val':vdl}
@@ -73,7 +74,7 @@ if args.system == 'kinetics':
     vdl = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True)
     dataloader = {'train':dl, 'val':vdl}
 
-    
+
 # scale lr for flow layer
 params = model.parameters()
 params = [p for p in params]
@@ -105,7 +106,7 @@ if ln[4] == 1:
     params = [p for p in params if (p.sum() != model.module.flow_layer.a.sum()).all() or p.size() != model.module.flow_layer.a.size()]
 
 
-    
+
 #print([p for p in model.parameters() if (p == model.module.flow_layer.t).all()])
 #print(other)
 print(len(params), len(other))
@@ -133,7 +134,7 @@ with open(os.path.join(log_path,'params.json'), 'w') as out:
     json.dump(hyper, out)
 log = {'iterations':[], 'epoch':[], 'validation':[], 'train_acc':[], 'val_acc':[]}
 
-    
+
 
 ###############
 #
@@ -149,7 +150,7 @@ for epoch in range(num_epochs):
             model.train()
         else:
             model.eval()
-            
+
         tloss = 0.
         acc = 0.
         tot = 0
@@ -164,27 +165,27 @@ for epoch in range(num_epochs):
                 #print('btw batch', (s-e)*1000)
                 vid = vid.to(device)
                 cls = cls.to(device)
-                
+
                 outputs = model(vid)
-                
+
                 pred = torch.max(outputs, dim=1)[1]
                 corr = torch.sum((pred == cls).int())
                 acc += corr.item()
                 tot += vid.size(0)
                 loss = F.cross_entropy(outputs, cls)
                 #print(loss)
-                
+
                 if phase == 'train':
                     solver.zero_grad()
                     loss.backward()
                     solver.step()
                     log['iterations'].append(loss.item())
-                    
+
                 tloss += loss.item()
                 c += 1
                 #e=time.time()
                 #print('batch',batch_size,'time',(e-s)*1000)
-            
+
         if phase == 'train':
             log['epoch'].append(tloss/c)
             log['train_acc'].append(acc/tot)
@@ -194,7 +195,7 @@ for epoch in range(num_epochs):
             log['val_acc'].append(acc/tot)
             print('val loss', tloss/c, 'acc', acc/tot)
             lr_sched.step(tloss/c)
-    
+
     with open(os.path.join(log_path,'log.json'), 'w') as out:
         json.dump(log, out)
     torch.save(model.state_dict(), os.path.join(log_path, 'hmdb_flow-of-flow_2p1d.pt'))
