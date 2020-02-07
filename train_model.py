@@ -15,6 +15,7 @@ parser.add_argument('-length', type=int, default=16)
 parser.add_argument('-learnable', type=str, default='[0,0,0,0,0]')
 parser.add_argument('-niter', type=int)
 parser.add_argument('-system', type=str, help='')
+parser.add_argument('-model', type=str)
 
 args = parser.parse_args()
 
